@@ -394,7 +394,7 @@ PEDIDOS_HTML = """
                 <td>{{ o["nome"] }}</td>
                 <td>{{ o["contato"] }}</td>
                 <td>{{ o["horario_entrega"] }}</td>
-                <td>{{ o["produto"] }}</td>
+                <td style="white-space: pre-line;">{{ o["produto"] }}</td>
                 <td>{{ o["quantidade"] }}</td>
                 <td>D$ {{ o["valor"] }}</td>
                 <td>{{ o["status"] }}</td>
@@ -465,18 +465,20 @@ def index():
             valor_total = total_pistol + total_sub + total_fuzil + total_c4
             quantidade_total = qtd_pistol + qtd_sub + qtd_fuzil + qtd_c4
 
-            # descrição legível dos itens
-            partes = []
+            # descrição em lista vertical (uma linha por item + total geral)
+            linhas = []
             if qtd_pistol:
-                partes.append(f"Pistol x{qtd_pistol} (D$ {total_pistol})")
+                linhas.append(f"Pistol x{qtd_pistol} — D$ {total_pistol}")
             if qtd_sub:
-                partes.append(f"Sub (SMG) x{qtd_sub} (D$ {total_sub})")
+                linhas.append(f"Sub (SMG) x{qtd_sub} — D$ {total_sub}")
             if qtd_fuzil:
-                partes.append(f"Fuzil (Rifle) x{qtd_fuzil} (D$ {total_fuzil})")
+                linhas.append(f"Fuzil (Rifle) x{qtd_fuzil} — D$ {total_fuzil}")
             if qtd_c4:
-                partes.append(f"C4 x{qtd_c4} (D$ {total_c4})")
+                linhas.append(f"C4 x{qtd_c4} — D$ {total_c4}")
 
-            descricao_produtos = " | ".join(partes)
+            linhas.append(f"TOTAL GERAL: D$ {valor_total}")
+
+            descricao_produtos = "\n".join(linhas)
 
             conn = get_db()
             cur = conn.cursor()
@@ -488,7 +490,7 @@ def index():
                 nome,
                 contato,
                 horario_entrega,
-                descricao_produtos,      # resumo de todos os itens
+                descricao_produtos,      # resumo de todos os itens (em lista vertical)
                 quantidade_total,        # soma de unidades
                 valor_total,             # soma de valores
                 criado_em
@@ -497,7 +499,7 @@ def index():
             pedido_id = cur.lastrowid
             conn.close()
 
-            # Embed para Aba Encomendas (agora com vários itens)
+            # Embed para Aba Encomendas (itens em lista vertical)
             embed = {
                 "title": f"📦 Nova encomenda #{pedido_id}",
                 "color": 0xF5C542,
