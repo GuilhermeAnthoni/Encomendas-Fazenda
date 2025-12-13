@@ -3,19 +3,24 @@ from flask import Flask, request, redirect, url_for, flash, session, render_temp
 import requests
 from datetime import datetime
 
+
 app = Flask(__name__)
 app.secret_key = "chave-secreta-simples"  # troque em produção
+
 
 # Webhooks do Discord
 WEBHOOK_ENCOMENDAS = "https://discord.com/api/webhooks/1447371536582574193/gcX3hHxrt8JGDoyWHj4rtavNNnWF7cC5Hd_0drCtJ7j6fu_IJRiKFxCgtwpr7TekW_lf"
 WEBHOOK_VENDAS = "https://discord.com/api/webhooks/1447372762875297894/iUiNTCZU6DI5xzWabVjIBqn8d6wS9yh_L70skG8Kgemgt5SykiluR-YRmvk6iWU2wA-k"
 
+
 # ------------------ BANCO DE DADOS ------------------ #
+
 
 def get_db():
     conn = sqlite3.connect("orders.db")
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_db():
     conn = get_db()
@@ -36,7 +41,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 # ------------------ FUNÇÕES AUXILIARES ------------------ #
+
 
 PRECOS = {
     "Pistol": 600,
@@ -44,6 +51,7 @@ PRECOS = {
     "Fuzil (Rifle)": 1000,
     "C4": 5000
 }
+
 
 def enviar_webhook(url, conteudo=None, embed=None):
     """Envia mensagem para o webhook; se embed for passado, manda como box."""
@@ -58,6 +66,7 @@ def enviar_webhook(url, conteudo=None, embed=None):
         # Em produção, logar o erro
         pass
 
+
 def contato_valido(contato: str) -> bool:
     # Formato: 3 dígitos, hífen, 3 dígitos (ex: 123-456)
     if len(contato) != 7:
@@ -68,7 +77,9 @@ def contato_valido(contato: str) -> bool:
     parte2 = contato[4:]
     return parte1.isdigit() and parte2.isdigit()
 
+
 # ------------------ TEMPLATES EM STRING ------------------ #
+
 
 INDEX_HTML = """
 <!DOCTYPE html>
@@ -176,22 +187,23 @@ INDEX_HTML = """
         <input type="text" name="nome" required>
 
         <label>Contato (formato 000-000):</label>
-        <input type="text" name="contato" placeholder="123-456" required>
+        <input type="text" name="contato" id="contato" placeholder="123-456" required>
 
         <label>Horário de entrega:</label>
         <input type="text" name="horario_entrega" placeholder="Ex: Após 20:00" required>
 
-        <label>Produto:</label>
-        <select name="produto" id="produto" required>
-            <option value="">Selecione</option>
-            <option value="Pistol">Pistol — D$ 600</option>
-            <option value="Sub (SMG)">Sub (SMG) — D$ 800</option>
-            <option value="Fuzil (Rifle)">Fuzil (Rifle) — D$ 1k</option>
-            <option value="C4">C4 — D$ 5k</option>
-        </select>
+        <!-- QUANTIDADES POR ITEM (CARRINHO EM UMA ENCOMENDA SÓ) -->
+        <label>Quantidade Pistol:</label>
+        <input type="number" name="qtd_pistol" min="0" value="0">
 
-        <label>Quantidade:</label>
-        <input type="number" name="quantidade" id="quantidade" value="1" min="1" required>
+        <label>Quantidade Sub (SMG):</label>
+        <input type="number" name="qtd_sub" min="0" value="0">
+
+        <label>Quantidade Fuzil (Rifle):</label>
+        <input type="number" name="qtd_fuzil" min="0" value="0">
+
+        <label>Quantidade C4:</label>
+        <input type="number" name="qtd_c4" min="0" value="0">
 
         <label>Total (D$):</label>
         <input type="text" id="total" readonly>
@@ -214,7 +226,7 @@ INDEX_HTML = """
     </p>
 
 <script>
-    // cálculo de total
+    // preços
     const precos = {
         "Pistol": 600,
         "Sub (SMG)": 800,
@@ -222,8 +234,11 @@ INDEX_HTML = """
         "C4": 5000
     };
 
-    const selectProduto = document.getElementById('produto');
-    const inputQuantidade = document.getElementById('quantidade');
+    // inputs de quantidade
+    const qPistol = document.querySelector('input[name="qtd_pistol"]');
+    const qSub    = document.querySelector('input[name="qtd_sub"]');
+    const qFuzil  = document.querySelector('input[name="qtd_fuzil"]');
+    const qC4     = document.querySelector('input[name="qtd_c4"]');
     const inputTotal = document.getElementById('total');
 
     function formatarNumero(valor) {
@@ -232,19 +247,44 @@ INDEX_HTML = """
     }
 
     function atualizarTotal() {
-        const produto = selectProduto.value;
-        const qtd = parseInt(inputQuantidade.value) || 1;
-        if (produto in precos) {
-            const total = precos[produto] * qtd;
+        const qp = parseInt(qPistol.value) || 0;
+        const qs = parseInt(qSub.value) || 0;
+        const qf = parseInt(qFuzil.value) || 0;
+        const qc = parseInt(qC4.value) || 0;
+
+        const total =
+            qp * precos["Pistol"] +
+            qs * precos["Sub (SMG)"] +
+            qf * precos["Fuzil (Rifle)"] +
+            qc * precos["C4"];
+
+        if (total > 0) {
             inputTotal.value = "D$ " + formatarNumero(total);
         } else {
             inputTotal.value = "";
         }
     }
 
-    selectProduto.addEventListener('change', atualizarTotal);
-    inputQuantidade.addEventListener('input', atualizarTotal);
+    [qPistol, qSub, qFuzil, qC4].forEach(inp => {
+        inp.addEventListener('input', atualizarTotal);
+    });
     atualizarTotal();
+
+    // máscara simples 000-000 para contato
+    const inputContato = document.getElementById('contato');
+    if (inputContato) {
+        inputContato.addEventListener('input', function () {
+            let v = this.value.replace(/[^0-9]/g, ''); // só dígitos
+            if (v.length > 6) {
+                v = v.slice(0, 6);
+            }
+            if (v.length > 3) {
+                this.value = v.slice(0, 3) + '-' + v.slice(3);
+            } else {
+                this.value = v;
+            }
+        });
+    }
 
     // esconder aviso em 10 segundos
     window.addEventListener('load', function () {
@@ -260,6 +300,7 @@ INDEX_HTML = """
 </body>
 </html>
 """
+
 
 LOGIN_HTML = """
 <!DOCTYPE html>
@@ -304,6 +345,7 @@ LOGIN_HTML = """
 </html>
 """
 
+
 PEDIDOS_HTML = """
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -337,9 +379,9 @@ PEDIDOS_HTML = """
                 <th>Nome</th>
                 <th>Contato</th>
                 <th>Horário entrega</th>
-                <th>Produto</th>
-                <th>Quantidade</th>
-                <th>Valor</th>
+                <th>Produto(s)</th>
+                <th>Quantidade total</th>
+                <th>Valor total</th>
                 <th>Status</th>
                 <th>Criado em</th>
                 <th>Ações</th>
@@ -378,7 +420,9 @@ PEDIDOS_HTML = """
 </html>
 """
 
+
 # ------------------ ROTAS ------------------ #
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -388,10 +432,16 @@ def index():
         nome = request.form.get("nome", "").strip()
         contato = request.form.get("contato", "").strip()
         horario_entrega = request.form.get("horario_entrega", "").strip()
-        produto = request.form.get("produto")
-        quantidade_str = request.form.get("quantidade", "1")
 
-        # Validações simples
+        # quantidades por produto
+        try:
+            qtd_pistol = int(request.form.get("qtd_pistol", 0) or 0)
+            qtd_sub    = int(request.form.get("qtd_sub", 0) or 0)
+            qtd_fuzil  = int(request.form.get("qtd_fuzil", 0) or 0)
+            qtd_c4     = int(request.form.get("qtd_c4", 0) or 0)
+        except ValueError:
+            qtd_pistol = qtd_sub = qtd_fuzil = qtd_c4 = 0
+
         erros = []
         if not nome:
             erros.append("Nome é obrigatório.")
@@ -399,22 +449,34 @@ def index():
             erros.append("Contato deve ter o formato 000-000 (6 dígitos com hífen).")
         if not horario_entrega:
             erros.append("Horário de entrega é obrigatório.")
-        if produto not in PRECOS:
-            erros.append("Produto inválido.")
-
-        try:
-            quantidade = int(quantidade_str)
-            if quantidade < 1:
-                raise ValueError
-        except ValueError:
-            erros.append("Quantidade deve ser um número inteiro maior ou igual a 1.")
+        if (qtd_pistol + qtd_sub + qtd_fuzil + qtd_c4) == 0:
+            erros.append("Informe ao menos 1 unidade em algum produto.")
 
         if erros:
             for e in erros:
                 flash(e, "erro")
         else:
-            valor_unitario = PRECOS[produto]
-            valor = valor_unitario * quantidade
+            # totais por item
+            total_pistol = qtd_pistol * PRECOS["Pistol"]
+            total_sub    = qtd_sub    * PRECOS["Sub (SMG)"]
+            total_fuzil  = qtd_fuzil  * PRECOS["Fuzil (Rifle)"]
+            total_c4     = qtd_c4     * PRECOS["C4"]
+
+            valor_total = total_pistol + total_sub + total_fuzil + total_c4
+            quantidade_total = qtd_pistol + qtd_sub + qtd_fuzil + qtd_c4
+
+            # descrição legível dos itens
+            partes = []
+            if qtd_pistol:
+                partes.append(f"Pistol x{qtd_pistol} (D$ {total_pistol})")
+            if qtd_sub:
+                partes.append(f"Sub (SMG) x{qtd_sub} (D$ {total_sub})")
+            if qtd_fuzil:
+                partes.append(f"Fuzil (Rifle) x{qtd_fuzil} (D$ {total_fuzil})")
+            if qtd_c4:
+                partes.append(f"C4 x{qtd_c4} (D$ {total_c4})")
+
+            descricao_produtos = " | ".join(partes)
 
             conn = get_db()
             cur = conn.cursor()
@@ -422,12 +484,20 @@ def index():
             cur.execute("""
                 INSERT INTO orders (nome, contato, horario_entrega, produto, quantidade, valor, status, criado_em)
                 VALUES (?, ?, ?, ?, ?, ?, 'PENDENTE', ?)
-            """, (nome, contato, horario_entrega, produto, quantidade, valor, criado_em))
+            """, (
+                nome,
+                contato,
+                horario_entrega,
+                descricao_produtos,      # resumo de todos os itens
+                quantidade_total,        # soma de unidades
+                valor_total,             # soma de valores
+                criado_em
+            ))
             conn.commit()
             pedido_id = cur.lastrowid
             conn.close()
 
-            # Embed para Aba Encomendas
+            # Embed para Aba Encomendas (agora com vários itens)
             embed = {
                 "title": f"📦 Nova encomenda #{pedido_id}",
                 "color": 0xF5C542,
@@ -435,9 +505,9 @@ def index():
                     {"name": "Nome", "value": nome, "inline": True},
                     {"name": "Contato", "value": contato, "inline": True},
                     {"name": "Horário entrega", "value": horario_entrega, "inline": False},
-                    {"name": "Produto", "value": produto, "inline": True},
-                    {"name": "Quantidade", "value": str(quantidade), "inline": True},
-                    {"name": "Valor total", "value": f"D$ {valor}", "inline": True},
+                    {"name": "Itens", "value": descricao_produtos or "—", "inline": False},
+                    {"name": "Quantidade total", "value": str(quantidade_total), "inline": True},
+                    {"name": "Valor total", "value": f"D$ {valor_total}", "inline": True},
                     {"name": "Status", "value": "PENDENTE", "inline": True},
                     {"name": "Prazo", "value": "Entrega em até 24 horas ou aguarde contato In-game.", "inline": False},
                 ],
@@ -448,6 +518,7 @@ def index():
             mensagem_notificacao = "Encomenda registrada! Prazo de 24hrs para entrega ou aguarde contato in-game."
 
     return render_template_string(INDEX_HTML, precos=PRECOS, mensagem_notificacao=mensagem_notificacao)
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -460,6 +531,7 @@ def login():
             flash("Senha incorreta.", "erro")
     return render_template_string(LOGIN_HTML)
 
+
 @app.route("/pedidos")
 def pedidos():
     if not session.get("autorizado"):
@@ -471,6 +543,7 @@ def pedidos():
     orders = cur.fetchall()
     conn.close()
     return render_template_string(PEDIDOS_HTML, orders=orders)
+
 
 @app.route("/atualizar_status/<int:pedido_id>", methods=["POST"])
 def atualizar_status(pedido_id):
@@ -498,8 +571,8 @@ def atualizar_status(pedido_id):
                     {"name": "Nome", "value": pedido["nome"], "inline": True},
                     {"name": "Contato", "value": pedido["contato"], "inline": True},
                     {"name": "Horário entrega", "value": pedido["horario_entrega"], "inline": False},
-                    {"name": "Produto", "value": pedido["produto"], "inline": True},
-                    {"name": "Quantidade", "value": str(pedido["quantidade"]), "inline": True},
+                    {"name": "Itens", "value": pedido["produto"], "inline": False},
+                    {"name": "Quantidade total", "value": str(pedido["quantidade"]), "inline": True},
                     {"name": "Valor total", "value": f"D$ {pedido['valor']}", "inline": True},
                     {"name": "Status", "value": "ENTREGUE", "inline": True},
                     {"name": "Criado em", "value": pedido["criado_em"], "inline": False},
@@ -510,6 +583,7 @@ def atualizar_status(pedido_id):
 
     conn.close()
     return redirect(url_for("pedidos"))
+
 
 if __name__ == "__main__":
     with app.app_context():
