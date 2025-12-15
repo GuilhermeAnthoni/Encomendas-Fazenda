@@ -3,24 +3,19 @@ from flask import Flask, request, redirect, url_for, flash, session, render_temp
 import requests
 from datetime import datetime
 
-
 app = Flask(__name__)
 app.secret_key = "chave-secreta-simples"  # troque em produção
-
 
 # Webhooks do Discord
 WEBHOOK_ENCOMENDAS = "https://discord.com/api/webhooks/1447371536582574193/gcX3hHxrt8JGDoyWHj4rtavNNnWF7cC5Hd_0drCtJ7j6fu_IJRiKFxCgtwpr7TekW_lf"
 WEBHOOK_VENDAS = "https://discord.com/api/webhooks/1447372762875297894/iUiNTCZU6DI5xzWabVjIBqn8d6wS9yh_L70skG8Kgemgt5SykiluR-YRmvk6iWU2wA-k"
 
-
 # ------------------ BANCO DE DADOS ------------------ #
-
 
 def get_db():
     conn = sqlite3.connect("orders.db")
     conn.row_factory = sqlite3.Row
     return conn
-
 
 def init_db():
     conn = get_db()
@@ -41,9 +36,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 # ------------------ FUNÇÕES AUXILIARES ------------------ #
-
 
 PRECOS = {
     "Pistol": 600,
@@ -51,7 +44,6 @@ PRECOS = {
     "Fuzil (Rifle)": 1000,
     "C4": 5000
 }
-
 
 def enviar_webhook(url, conteudo=None, embed=None):
     """Envia mensagem para o webhook; se embed for passado, manda como box."""
@@ -66,7 +58,6 @@ def enviar_webhook(url, conteudo=None, embed=None):
         # Em produção, logar o erro
         pass
 
-
 def contato_valido(contato: str) -> bool:
     # Formato: 3 dígitos, hífen, 3 dígitos (ex: 123-456)
     if len(contato) != 7:
@@ -77,9 +68,7 @@ def contato_valido(contato: str) -> bool:
     parte2 = contato[4:]
     return parte1.isdigit() and parte2.isdigit()
 
-
 # ------------------ TEMPLATES EM STRING ------------------ #
-
 
 INDEX_HTML = """
 <!DOCTYPE html>
@@ -222,7 +211,7 @@ INDEX_HTML = """
     </div>
 
     <p style="margin-top:20px;">
-        Acesso de gerenciamento: <a href="{{ url_for('login') }}">Área de pedidos (restrita)</a>
+        Acompanhar: <a href="{{ url_for('meus_pedidos') }}">Minhas encomendas</a>
     </p>
 
 <script>
@@ -301,57 +290,12 @@ INDEX_HTML = """
 </html>
 """
 
-
-LOGIN_HTML = """
+MEUS_PEDIDOS_HTML = """
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Login - Pedidos</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #111; color: #eee; }
-        h1 { color: #f5c542; }
-        form { max-width: 300px; background: #222; padding: 20px; border-radius: 8px; }
-        label { display: block; margin-top: 10px; }
-        input { width: 100%; padding: 8px; margin-top: 5px; border-radius: 4px; border: 1px solid #555; background: #111; color: #eee; }
-        button { margin-top: 15px; padding: 10px; width: 100%; background: #f5c542; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-        button:hover { background: #e0b233; }
-        .flash { margin-top: 10px; padding: 8px; border-radius: 4px; }
-        .flash.erro { background: #7b1e1e; }
-        a { color: #f5c542; }
-    </style>
-</head>
-<body>
-    <h1>Área Restrita</h1>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, msg in messages %}
-          <div class="flash {{ category }}">{{ msg }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <form method="post">
-        <label>Senha de acesso:</label>
-        <input type="password" name="senha" required>
-        <button type="submit">Entrar</button>
-    </form>
-
-    <p style="margin-top:15px;">
-        <a href="{{ url_for('index') }}">Voltar para encomendas</a>
-    </p>
-</body>
-</html>
-"""
-
-
-PEDIDOS_HTML = """
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Pedidos de Encomendas</title>
+    <title>Minhas Encomendas</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #111; color: #eee; }
         h1 { color: #f5c542; }
@@ -363,66 +307,76 @@ PEDIDOS_HTML = """
         button { padding: 5px 10px; background: #f5c542; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #e0b233; }
         a { color: #f5c542; }
+        .flash { margin-top: 10px; padding: 8px; border-radius: 4px; }
+        .flash.erro { background: #7b1e1e; }
     </style>
 </head>
 <body>
-    <h1>Pedidos de Encomendas</h1>
+    <h1>Minhas Encomendas</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          <div class="flash {{ category }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
 
     <p>
         <a href="{{ url_for('index') }}">Voltar para tela de encomendas</a>
     </p>
 
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Nome</th>
-                <th>Contato</th>
-                <th>Horário entrega</th>
-                <th>Produto(s)</th>
-                <th>Quantidade total</th>
-                <th>Valor total</th>
-                <th>Status</th>
-                <th>Criado em</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for o in orders %}
-            <tr>
-                <td>{{ o["id"] }}</td>
-                <td>{{ o["nome"] }}</td>
-                <td>{{ o["contato"] }}</td>
-                <td>{{ o["horario_entrega"] }}</td>
-                <td style="white-space: pre-line;">{{ o["produto"] }}</td>
-                <td>{{ o["quantidade"] }}</td>
-                <td>D$ {{ o["valor"] }}</td>
-                <td>{{ o["status"] }}</td>
-                <td>{{ o["criado_em"] }}</td>
-                <td>
-                    <form method="post" action="{{ url_for('atualizar_status', pedido_id=o['id']) }}">
-                        <select name="status">
-                            <option value="PENDENTE" {% if o["status"] == "PENDENTE" %}selected{% endif %}>PENDENTE</option>
-                            <option value="ENTREGUE" {% if o["status"] == "ENTREGUE" %}selected{% endif %}>ENTREGUE</option>
-                        </select>
-                        <button type="submit">Atualizar</button>
-                    </form>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="10">Nenhuma encomenda registrada.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    {% if not contato_atual %}
+        <p>Você ainda não fez nenhuma encomenda neste dispositivo. Faça uma encomenda primeiro para acompanhar aqui.</p>
+    {% else %}
+        <p>Contato atual: {{ contato_atual }}</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Horário entrega</th>
+                    <th>Produto(s)</th>
+                    <th>Quantidade total</th>
+                    <th>Valor total</th>
+                    <th>Status</th>
+                    <th>Criado em</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in orders %}
+                <tr>
+                    <td>{{ o["id"] }}</td>
+                    <td>{{ o["horario_entrega"] }}</td>
+                    <td style="white-space: pre-line;">{{ o["produto"] }}</td>
+                    <td>{{ o["quantidade"] }}</td>
+                    <td>D$ {{ o["valor"] }}</td>
+                    <td>{{ o["status"] }}</td>
+                    <td>{{ o["criado_em"] }}</td>
+                    <td>
+                        {% if o["status"] != "ENTREGUE" %}
+                        <form method="post" action="{{ url_for('atualizar_status', pedido_id=o['id']) }}">
+                            <input type="hidden" name="status" value="ENTREGUE">
+                            <button type="submit">Marcar como entregue</button>
+                        </form>
+                        {% else %}
+                            Entregue
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8">Nenhuma encomenda encontrada para este contato.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
 </body>
 </html>
 """
 
-
 # ------------------ ROTAS ------------------ #
-
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -499,6 +453,9 @@ def index():
             pedido_id = cur.lastrowid
             conn.close()
 
+            # guardar contato na sessão para acompanhar pedidos depois
+            session["contato"] = contato
+
             # Embed para Aba Encomendas (itens em lista vertical)
             embed = {
                 "title": f"📦 Nova encomenda #{pedido_id}",
@@ -521,71 +478,67 @@ def index():
 
     return render_template_string(INDEX_HTML, precos=PRECOS, mensagem_notificacao=mensagem_notificacao)
 
+@app.route("/meus_pedidos")
+def meus_pedidos():
+    contato_atual = session.get("contato")
+    orders = []
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        senha = request.form.get("senha")
-        if senha == "77":
-            session["autorizado"] = True
-            return redirect(url_for("pedidos"))
-        else:
-            flash("Senha incorreta.", "erro")
-    return render_template_string(LOGIN_HTML)
+    if contato_atual:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM orders WHERE contato = ? ORDER BY id DESC", (contato_atual,))
+        orders = cur.fetchall()
+        conn.close()
 
-
-@app.route("/pedidos")
-def pedidos():
-    if not session.get("autorizado"):
-        return redirect(url_for("login"))
-
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM orders ORDER BY id DESC")
-    orders = cur.fetchall()
-    conn.close()
-    return render_template_string(PEDIDOS_HTML, orders=orders)
-
+    return render_template_string(MEUS_PEDIDOS_HTML, orders=orders, contato_atual=contato_atual)
 
 @app.route("/atualizar_status/<int:pedido_id>", methods=["POST"])
 def atualizar_status(pedido_id):
-    if not session.get("autorizado"):
-        return redirect(url_for("login"))
+    contato_atual = session.get("contato")
+    if not contato_atual:
+        flash("Sessão expirada ou contato não encontrado para este dispositivo.", "erro")
+        return redirect(url_for("meus_pedidos"))
 
     novo_status = request.form.get("status")
     if novo_status not in ["PENDENTE", "ENTREGUE"]:
         flash("Status inválido.", "erro")
-        return redirect(url_for("pedidos"))
+        return redirect(url_for("meus_pedidos"))
 
     conn = get_db()
     cur = conn.cursor()
+
+    # garantir que o pedido pertence ao contato da sessão
+    cur.execute("SELECT * FROM orders WHERE id = ? AND contato = ?", (pedido_id, contato_atual))
+    pedido = cur.fetchone()
+
+    if not pedido:
+        conn.close()
+        flash("Pedido não encontrado para este contato.", "erro")
+        return redirect(url_for("meus_pedidos"))
+
     cur.execute("UPDATE orders SET status = ? WHERE id = ?", (novo_status, pedido_id))
     conn.commit()
 
     if novo_status == "ENTREGUE":
-        cur.execute("SELECT * FROM orders WHERE id = ?", (pedido_id,))
-        pedido = cur.fetchone()
-        if pedido:
-            embed = {
-                "title": f"✅ Encomenda #{pedido['id']} ENTREGUE",
-                "color": 0x1E7B2C,
-                "fields": [
-                    {"name": "Nome", "value": pedido["nome"], "inline": True},
-                    {"name": "Contato", "value": pedido["contato"], "inline": True},
-                    {"name": "Horário entrega", "value": pedido["horario_entrega"], "inline": False},
-                    {"name": "Itens", "value": pedido["produto"], "inline": False},
-                    {"name": "Quantidade total", "value": str(pedido["quantidade"]), "inline": True},
-                    {"name": "Valor total", "value": f"D$ {pedido['valor']}", "inline": True},
-                    {"name": "Status", "value": "ENTREGUE", "inline": True},
-                    {"name": "Criado em", "value": pedido["criado_em"], "inline": False},
-                ],
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            enviar_webhook(WEBHOOK_VENDAS, embed=embed)
+        embed = {
+            "title": f"✅ Encomenda #{pedido['id']} ENTREGUE",
+            "color": 0x1E7B2C,
+            "fields": [
+                {"name": "Nome", "value": pedido["nome"], "inline": True},
+                {"name": "Contato", "value": pedido["contato"], "inline": True},
+                {"name": "Horário entrega", "value": pedido["horario_entrega"], "inline": False},
+                {"name": "Itens", "value": pedido["produto"], "inline": False},
+                {"name": "Quantidade total", "value": str(pedido["quantidade"]), "inline": True},
+                {"name": "Valor total", "value": f"D$ {pedido['valor']}", "inline": True},
+                {"name": "Status", "value": "ENTREGUE", "inline": True},
+                {"name": "Criado em", "value": pedido["criado_em"], "inline": False},
+            ],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        enviar_webhook(WEBHOOK_VENDAS, embed=embed)
 
     conn.close()
-    return redirect(url_for("pedidos"))
-
+    return redirect(url_for("meus_pedidos"))
 
 if __name__ == "__main__":
     with app.app_context():
